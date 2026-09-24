@@ -569,18 +569,35 @@ internal sealed class GoalHandler : ClientMsgHandler {
                     hasFreeFamilyCopy
                 );
 
+            /*
+             * GetSharedLibraryApps.rt_playtime is reported in seconds
+             * for the requested Steam user. GetPlaytimeSummary is kept
+             * as a second Family source because either endpoint may be
+             * temporarily incomplete. OWN playtime from GetOwnedGames
+             * remains authoritative for directly-owned games.
+             */
+            uint sharedLibraryMinutes =
+                shared.rt_playtime / 60u;
+
+            uint summaryMinutes =
+                familyPlaytimeMinutes
+                    .TryGetValue(
+                        appId,
+                        out uint familyMinutes
+                    )
+                    ? familyMinutes
+                    : 0;
+
+            uint familyMinutesBest =
+                Math.Max(
+                    sharedLibraryMinutes,
+                    summaryMinutes
+                );
+
             uint playtimeMinutes =
                 own?.PlaytimeForeverMinutes
                 ??
-                (
-                    familyPlaytimeMinutes
-                        .TryGetValue(
-                            appId,
-                            out uint familyMinutes
-                        )
-                        ? familyMinutes
-                        : 0
-                );
+                familyMinutesBest;
 
             string name =
                 !string.IsNullOrWhiteSpace(
