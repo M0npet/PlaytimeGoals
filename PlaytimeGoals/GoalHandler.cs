@@ -570,14 +570,14 @@ internal sealed class GoalHandler : ClientMsgHandler {
                 );
 
             /*
-             * GetSharedLibraryApps.rt_playtime is reported in seconds
+             * GetSharedLibraryApps.rt_playtime is reported in minutes
              * for the requested Steam user. GetPlaytimeSummary is kept
              * as a second Family source because either endpoint may be
              * temporarily incomplete. OWN playtime from GetOwnedGames
              * remains authoritative for directly-owned games.
              */
             uint sharedLibraryMinutes =
-                shared.rt_playtime / 60u;
+                shared.rt_playtime;
 
             uint summaryMinutes =
                 familyPlaytimeMinutes
