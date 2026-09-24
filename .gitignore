@@ -59,3 +59,18 @@ playtimegoals_v05*.sh
 .idea/
 .vscode/
 .DS_Store
+
+# Environment / local secrets
+.env
+.env.*
+!.env.example
+secrets/
+secret/
+credentials/
+credentials.json
+*.secret
+*.session
+*.cookie
+cookies.txt
+login.key
+login.keys

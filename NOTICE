@@ -1,0 +1,14 @@
+PlaytimeGoals
+Copyright 2026 M0npet
+
+Licensed under the Apache License, Version 2.0.
+
+This repository contains modified ASF-ui integration files originating
+from the JustArchiNET/ASF-ui project, which is distributed under the
+Apache License, Version 2.0.
+
+Upstream:
+https://github.com/JustArchiNET/ASF-ui
+
+PlaytimeGoals is an independent custom plugin and is not an official
+ArchiSteamFarm component.
