@@ -1069,7 +1069,8 @@ internal sealed class PlaytimeGoalsPlugin :
                                     game.CurrentHours,
                                     game.EffectiveHours,
                                     game.RemainingHours,
-                                    game.State
+                                    game.State,
+                                    game.QueuePosition
                                 }
                         )
                         .ToArray()
@@ -1182,12 +1183,30 @@ internal sealed class PlaytimeGoalsPlugin :
 
                                     Source =
                                         game.Owned
-                                            ? (
-                                                game.FamilyShared
-                                                    ? "own+family"
-                                                    : "own"
-                                            )
-                                            : "family",
+                                            ? "own"
+                                            : (
+                                                game.FamilyShared &&
+                                                game.Shareable
+                                                    ? "family"
+                                                    : "excluded"
+                                            ),
+
+                                    Owned =
+                                        game.Owned,
+
+                                    FamilyShared =
+                                        game.FamilyShared,
+
+                                    AlsoInFamily =
+                                        game.Owned &&
+                                        game.FamilyShared,
+
+                                    CanSelect =
+                                        game.Owned ||
+                                        (
+                                            game.FamilyShared &&
+                                            game.Shareable
+                                        ),
 
                                     game.Shareable,
                                     game.Available,
@@ -1561,21 +1580,37 @@ internal sealed class SteamActionsAdapter(
                         string.Empty;
 
                     if (game.Owned) {
+                        /*
+                         * OWN always wins over Steam Family metadata.
+                         * We cannot choose a concrete Steam license in
+                         * ClientGamesPlayed, but owned games never depend
+                         * on family-copy availability in our scheduler.
+                         */
                         runnable = true;
                     } else if (
-                        !game.FamilyShared ||
+                        !game.FamilyShared
+                    ) {
+                        runnable = false;
+                        blockState =
+                            "family-not-shareable";
+                    } else if (
                         !game.Shareable
                     ) {
                         runnable = false;
                         blockState =
-                            "unavailable";
+                            "family-not-shareable";
                     } else if (
-                        !game.FamilyAvailabilityKnown ||
+                        !game.FamilyAvailabilityKnown
+                    ) {
+                        runnable = false;
+                        blockState =
+                            "family-availability-unknown";
+                    } else if (
                         !game.Available
                     ) {
                         runnable = false;
                         blockState =
-                            "family-unavailable";
+                            "family-copy-busy";
                     } else {
                         runnable = true;
                     }

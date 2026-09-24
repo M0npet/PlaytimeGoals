@@ -132,6 +132,10 @@
               <input
                 type="checkbox"
                 :checked="row.selected"
+                :disabled="!row.selectable && !row.selected"
+                :title="!row.selectable && !row.selected
+                  ? 'This game cannot be idled from this account'
+                  : ''"
                 @change="toggleSelected(row.appId, $event.target.checked)"
               >
             </td>
@@ -160,6 +164,7 @@
                 min="0.1"
                 step="0.1"
                 :value="goalValue(row.appId)"
+                :disabled="!row.selectable"
                 placeholder="∞"
                 @input="setGoal(row.appId, $event.target.value)"
               >
@@ -268,6 +273,7 @@ export default {
         { value: 'selected', label: 'Selected' },
         { value: 'own', label: 'Own' },
         { value: 'family', label: 'Family' },
+        { value: 'excluded', label: 'Excluded' },
         { value: 'unavailable', label: 'Unavailable' },
       ],
     };
@@ -392,7 +398,18 @@ export default {
 
           const source = String(game.Source || 'family').toLowerCase();
           const available = this.isAvailable(game);
+          const selectable = Boolean(
+            typeof game.CanSelect === 'boolean'
+              ? game.CanSelect
+              : source !== 'excluded',
+          );
           const state = selected && live ? live.State : 'not-selected';
+          const queuePosition = (
+            live &&
+            live.QueuePosition != null
+          )
+            ? Number(live.QueuePosition)
+            : null;
 
           return {
             appId,
@@ -406,10 +423,23 @@ export default {
             sourceLabel: this.sourceLabel(source),
             sourceClass: source.replace('+', '-'),
             available,
+            selectable,
+            queuePosition,
             availabilityText: this.availabilityText(game),
             state,
-            statusText: this.statusText(state, game, selected),
-            statusClass: this.statusClass(state, game, selected),
+            statusText: this.statusText(
+              state,
+              game,
+              selected,
+              queuePosition,
+              selectable,
+            ),
+            statusClass: this.statusClass(
+              state,
+              game,
+              selected,
+              selectable,
+            ),
           };
         })
         .sort((a, b) => {
@@ -435,10 +465,13 @@ export default {
             return row.selected;
 
           case 'own':
-            return row.source === 'own' || row.source === 'own+family';
+            return row.source === 'own';
 
           case 'family':
-            return row.source === 'family' || row.source === 'own+family';
+            return row.source === 'family';
+
+          case 'excluded':
+            return row.source === 'excluded';
 
           case 'unavailable':
             return !row.available;
@@ -551,8 +584,8 @@ export default {
         case 'own':
           return 'OWN';
 
-        case 'own+family':
-          return 'OWN+FAMILY';
+        case 'excluded':
+          return 'EXCLUDED';
 
         default:
           return 'FAMILY';
@@ -560,23 +593,120 @@ export default {
     },
 
     isAvailable(game) {
-      if (game.Source === 'own' || game.Source === 'own+family') return true;
+      const source = String(game.Source || '').toLowerCase();
+
+      if (source === 'own') return true;
+      if (source === 'excluded') return false;
+
       return Boolean(game.Available);
+    },
+
+    familyExcludeReasonText(reason) {
+      switch (Number(reason)) {
+        case 1:
+          return 'Publisher disabled Steam Family sharing';
+
+        case 2:
+          return 'License is not shareable';
+
+        case 3:
+          return 'Free game — claim it on this account';
+
+        case 4:
+          return 'Private license';
+
+        case 6:
+          return 'Unsupported app type';
+
+        case 7:
+          return 'Non-refundable DLC';
+
+        case 8:
+          return 'Unreleased app';
+
+        case 9:
+          return 'Parent app is excluded';
+
+        case 10:
+          return 'Package excluded by publisher';
+
+        case 11:
+          return 'Special package is not shareable';
+
+        case 12:
+          return 'Developer package';
+
+        case 13:
+          return 'Free-weekend license';
+
+        case 15:
+          return 'Invalid family package';
+
+        case 16:
+          return 'Recurring license is not shareable';
+
+        case 17:
+          return 'Unsupported license type';
+
+        case 18:
+          return 'Master package is not shareable';
+
+        case 19:
+          return 'Package contains no shareable apps';
+
+        case 20:
+          return 'Payment master license is excluded';
+
+        case 21:
+          return 'Family-group payment license is excluded';
+
+        case 22:
+          return 'Authorized-device license is excluded';
+
+        case 23:
+          return 'Auto-grant payment license is excluded';
+
+        case 24:
+          return 'License is pending';
+
+        case 25:
+          return 'License has a pending refund';
+
+        case 26:
+          return 'Borrowed license cannot be re-shared';
+
+        case 27:
+          return 'Auto-grant license is excluded';
+
+        case 28:
+          return 'Timed-trial license is excluded';
+
+        case 29:
+          return 'Free subscription is not shareable';
+
+        case 30:
+          return 'Inactive license';
+
+        default:
+          return 'Not shareable through Steam Family';
+      }
     },
 
     availabilityText(game) {
       const source = String(game.Source || '').toLowerCase();
 
-      if (source === 'own' || source === 'own+family') {
-        return 'Available';
+      if (source === 'own') {
+        return game.AlsoInFamily
+          ? 'Owned · also in Family'
+          : 'Owned';
       }
 
-      if (!game.Shareable) {
-        return 'Not shareable';
+      if (source === 'excluded' || !game.Shareable) {
+        return this.familyExcludeReasonText(game.ExcludeReason);
       }
 
       if (!game.FamilyAvailabilityKnown) {
-        return 'Availability unknown';
+        return 'Family availability unknown';
       }
 
       const copies = Number(game.FamilyCopies || 0);
@@ -588,18 +718,21 @@ export default {
       }
 
       return copies > 0
-        ? `${used}/${copies} in use`
-        : 'Unavailable';
+        ? 'All family copies are in use'
+        : 'No family copy available';
     },
 
-    statusText(state, game, selected) {
-      if (!selected) return 'Not selected';
-
-      if (
-        game.Source === 'family' &&
-        (!game.FamilyAvailabilityKnown || !game.Available)
-      ) {
-        return 'Family unavailable';
+    statusText(
+      state,
+      game,
+      selected,
+      queuePosition,
+      selectable,
+    ) {
+      if (!selected) {
+        return selectable
+          ? 'Not selected'
+          : 'Cannot select';
       }
 
       switch (state) {
@@ -609,17 +742,22 @@ export default {
         case 'idling-unlimited':
           return 'Idling ∞';
 
-        case 'waiting':
-          return 'Waiting';
+        case 'queued':
+          return queuePosition
+            ? `Queued #${queuePosition}`
+            : 'Queued';
 
         case 'complete':
           return 'Complete';
 
-        case 'unlimited':
-          return 'Unlimited';
+        case 'family-not-shareable':
+          return 'Cannot idle';
 
-        case 'family-unavailable':
-          return 'Family unavailable';
+        case 'family-copy-busy':
+          return 'Waiting for family copy';
+
+        case 'family-availability-unknown':
+          return 'Family availability unknown';
 
         case 'parental-blocked':
           return 'Parental blocked';
@@ -627,22 +765,37 @@ export default {
         case 'account-in-use':
           return 'Account in use';
 
+        case 'asf-farming':
+          return 'ASF farming';
+
+        case 'asf-paused':
+          return 'ASF paused';
+
         case 'unavailable':
           return 'Unavailable';
 
+        // Backward compatibility with an old status snapshot.
+        case 'waiting':
+          return 'Queued';
+
+        case 'family-unavailable':
+          return 'Waiting for family copy';
+
         default:
-          return 'Waiting';
+          return 'Waiting for status';
       }
     },
 
-    statusClass(state, game, selected) {
-      if (!selected) return 'muted';
-
-      if (
-        game.Source === 'family' &&
-        (!game.FamilyAvailabilityKnown || !game.Available)
-      ) {
-        return 'bad';
+    statusClass(
+      state,
+      game,
+      selected,
+      selectable,
+    ) {
+      if (!selected) {
+        return selectable
+          ? 'muted'
+          : 'bad';
       }
 
       switch (state) {
@@ -653,7 +806,7 @@ export default {
         case 'complete':
           return 'complete';
 
-        case 'family-unavailable':
+        case 'family-not-shareable':
         case 'parental-blocked':
         case 'unavailable':
           return 'bad';
@@ -661,6 +814,13 @@ export default {
         case 'account-in-use':
           return 'info';
 
+        case 'family-copy-busy':
+        case 'family-availability-unknown':
+        case 'queued':
+        case 'waiting':
+        case 'family-unavailable':
+        case 'asf-farming':
+        case 'asf-paused':
         default:
           return 'waiting';
       }
@@ -969,8 +1129,9 @@ export default {
   border-color: #8b5cf6;
 }
 
-.playtime-goals__pill--own-family {
-  border-color: #06a6a6;
+.playtime-goals__pill--excluded {
+  border-color: var(--color-button-cancel);
+  color: var(--color-text-info);
 }
 
 .playtime-goals__availability {

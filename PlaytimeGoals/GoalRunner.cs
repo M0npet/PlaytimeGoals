@@ -43,7 +43,8 @@ internal sealed record GoalGameStatus(
     double CurrentHours,
     double EffectiveHours,
     double? RemainingHours,
-    string State
+    string State,
+    int? QueuePosition = null
 );
 
 internal sealed record GoalStatusSnapshot(
@@ -452,6 +453,9 @@ internal sealed class GoalRunner : IDisposable {
                     .ConfigureAwait(false);
             }
 
+            uint[] orderedCandidates =
+                OrderedCandidates();
+
             List<GoalGameStatus> games =
                 new();
 
@@ -503,6 +507,30 @@ internal sealed class GoalRunner : IDisposable {
                         effectiveMinutes
                     );
 
+                int? queuePosition =
+                    null;
+
+                if (
+                    state ==
+                        "queued"
+                ) {
+                    int candidateIndex =
+                        Array.IndexOf(
+                            orderedCandidates,
+                            appId
+                        );
+
+                    if (
+                        candidateIndex >=
+                            config.BatchSize
+                    ) {
+                        queuePosition =
+                            candidateIndex -
+                            config.BatchSize +
+                            1;
+                    }
+                }
+
                 games.Add(
                     new GoalGameStatus(
                         appId,
@@ -525,7 +553,8 @@ internal sealed class GoalRunner : IDisposable {
                                 2
                             )
                             : null,
-                        state
+                        state,
+                        queuePosition
                     )
                 );
             }
@@ -669,7 +698,14 @@ internal sealed class GoalRunner : IDisposable {
         Persist(true);
     }
 
-    private uint[] SelectBatch() {
+    private uint[] SelectBatch() =>
+        OrderedCandidates()
+            .Take(
+                config.BatchSize
+            )
+            .ToArray();
+
+    private uint[] OrderedCandidates() {
         List<
             (
                 uint AppId,
@@ -745,9 +781,6 @@ internal sealed class GoalRunner : IDisposable {
                 static candidate =>
                     candidate.AppId
             )
-            .Take(
-                config.BatchSize
-            )
             .Select(
                 static candidate =>
                     candidate.AppId
@@ -800,16 +833,15 @@ internal sealed class GoalRunner : IDisposable {
             return "account-in-use";
         }
 
-        if (
-            botState.Farming ||
-            botState.FarmerPaused
-        ) {
-            return "waiting";
+        if (botState.Farming) {
+            return "asf-farming";
         }
 
-        return targetHours == null
-            ? "unlimited"
-            : "waiting";
+        if (botState.FarmerPaused) {
+            return "asf-paused";
+        }
+
+        return "queued";
     }
 
     private void SettleCredit(
