@@ -1,0 +1,61 @@
+# Builds
+bin/
+obj/
+dist/
+node_modules/
+*.dll
+*.pdb
+*.so
+
+# ASF runtime/configuration
+config/
+plugins/
+www/
+logs/
+debug/
+*.db
+*.db.*
+*.log
+
+# Secrets / credentials / certificates
+*.key
+*.pem
+*.pfx
+*.p12
+*.crt
+*.cer
+cryptkey
+server.key
+server.crt
+
+# ASF configs must NEVER be committed
+ASF.json
+main.json
+IPC.config
+*.config.json
+
+# Runtime state
+*PlaytimeGoals.db
+*parental-journal*
+*.new
+
+# Backups / scans / installers
+*.bak
+*.backup
+*.pre-v*
+.ptg-backups/
+.playtimegoals-*/
+*FULL_SCAN*
+*SCAN*
+playtimegoals_v05*.sh
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store

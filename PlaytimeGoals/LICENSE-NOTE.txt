@@ -1,0 +1,7 @@
+PlaytimeGoals is intended as a custom ASF plugin.
+
+The SteamKit2 message-handling approach and playtime-lag reconciliation were designed with reference to:
+- ArchiSteamFarm (Apache-2.0): https://github.com/JustArchiNET/ArchiSteamFarm
+- ASF-AdvancedIdle (Apache-2.0): https://github.com/cwilliams5/ASF-AdvancedIdle
+
+This source bundle does not include either upstream project's source tree.
