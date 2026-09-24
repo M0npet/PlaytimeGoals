@@ -273,6 +273,7 @@ export default {
         { value: 'selected', label: 'Selected' },
         { value: 'own', label: 'Own' },
         { value: 'family', label: 'Family' },
+        { value: 'free', label: 'Free' },
         { value: 'excluded', label: 'Excluded' },
         { value: 'unavailable', label: 'Unavailable' },
       ],
@@ -470,6 +471,9 @@ export default {
           case 'family':
             return row.source === 'family';
 
+          case 'free':
+            return row.source === 'free';
+
           case 'excluded':
             return row.source === 'excluded';
 
@@ -584,6 +588,9 @@ export default {
         case 'own':
           return 'OWN';
 
+        case 'free':
+          return 'FREE';
+
         case 'excluded':
           return 'EXCLUDED';
 
@@ -596,6 +603,7 @@ export default {
       const source = String(game.Source || '').toLowerCase();
 
       if (source === 'own') return true;
+      if (source === 'free') return false;
       if (source === 'excluded') return false;
 
       return Boolean(game.Available);
@@ -610,7 +618,7 @@ export default {
           return 'License is not shareable';
 
         case 3:
-          return 'Free game — claim it on this account';
+          return 'Free game';
 
         case 4:
           return 'Private license';
@@ -701,6 +709,10 @@ export default {
           : 'Owned';
       }
 
+      if (source === 'free') {
+        return 'Free license auto-claimed when selected';
+      }
+
       if (source === 'excluded' || !game.Shareable) {
         return this.familyExcludeReasonText(game.ExcludeReason);
       }
@@ -749,6 +761,12 @@ export default {
 
         case 'complete':
           return 'Complete';
+
+        case 'free-license-pending':
+          return 'Claiming free license';
+
+        case 'free-license-claim-failed':
+          return 'License claim failed · retrying';
 
         case 'family-not-shareable':
           return 'Cannot idle';
@@ -814,6 +832,10 @@ export default {
         case 'account-in-use':
           return 'info';
 
+        case 'free-license-claim-failed':
+          return 'bad';
+
+        case 'free-license-pending':
         case 'family-copy-busy':
         case 'family-availability-unknown':
         case 'queued':
@@ -1127,6 +1149,10 @@ export default {
 
 .playtime-goals__pill--family {
   border-color: #8b5cf6;
+}
+
+.playtime-goals__pill--free {
+  border-color: #32a852;
 }
 
 .playtime-goals__pill--excluded {

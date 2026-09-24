@@ -1185,10 +1185,17 @@ internal sealed class PlaytimeGoalsPlugin :
                                         game.Owned
                                             ? "own"
                                             : (
-                                                game.FamilyShared &&
-                                                game.Shareable
-                                                    ? "family"
-                                                    : "excluded"
+                                                game.ExcludeReason ==
+                                                (int)
+                                                ESharedLibraryExcludeReason
+                                                    .k_ESharedLibrary_FreeGame
+                                                    ? "free"
+                                                    : (
+                                                        game.FamilyShared &&
+                                                        game.Shareable
+                                                            ? "family"
+                                                            : "excluded"
+                                                    )
                                             ),
 
                                     Owned =
@@ -1203,6 +1210,12 @@ internal sealed class PlaytimeGoalsPlugin :
 
                                     CanSelect =
                                         game.Owned ||
+                                        (
+                                            game.ExcludeReason ==
+                                            (int)
+                                            ESharedLibraryExcludeReason
+                                                .k_ESharedLibrary_FreeGame
+                                        ) ||
                                         (
                                             game.FamilyShared &&
                                             game.Shareable
@@ -1451,6 +1464,22 @@ internal sealed class SteamActionsAdapter(
     ParentalPolicyService parentalPolicy,
     GoalConfig config
 ) : IGoalSteamActions {
+    private static readonly TimeSpan
+        FreeLicenseRetryInterval =
+            TimeSpan.FromMinutes(5);
+
+    private readonly Dictionary<
+        uint,
+        DateTime
+    > freeLicenseAttemptUtc =
+        new();
+
+    private readonly Dictionary<
+        uint,
+        EResult
+    > freeLicenseAttemptResult =
+        new();
+
     public bool RecoveryReady =>
         parentalPolicy.RecoveryReady;
 
@@ -1509,6 +1538,155 @@ internal sealed class SteamActionsAdapter(
             .ConfigureAwait(false);
     }
 
+    private async Task<
+        FamilyLibrarySnapshot
+    > AutoClaimSelectedFreeGames(
+        FamilyLibrarySnapshot snapshot,
+        HashSet<uint> managed
+    ) {
+        ArgumentNullException.ThrowIfNull(
+            snapshot
+        );
+
+        ArgumentNullException.ThrowIfNull(
+            managed
+        );
+
+        foreach (
+            FamilyLibraryGameSnapshot game
+            in snapshot.Games
+                .Where(
+                    game =>
+                        managed.Contains(
+                            game.AppId
+                        ) &&
+                        game.Owned
+                )
+        ) {
+            freeLicenseAttemptUtc.Remove(
+                game.AppId
+            );
+
+            freeLicenseAttemptResult.Remove(
+                game.AppId
+            );
+        }
+
+        if (
+            !bot.IsConnectedAndLoggedOn ||
+            managed.Count == 0
+        ) {
+            return snapshot;
+        }
+
+        FamilyLibraryGameSnapshot[] freeGames =
+            snapshot.Games
+                .Where(
+                    game =>
+                        managed.Contains(
+                            game.AppId
+                        ) &&
+                        !game.Owned &&
+                        (
+                            game.ExcludeReason ==
+                            (int)
+                            ESharedLibraryExcludeReason
+                                .k_ESharedLibrary_FreeGame
+                        )
+                )
+                .OrderBy(
+                    static game =>
+                        game.AppId
+                )
+                .ToArray();
+
+        if (freeGames.Length == 0) {
+            return snapshot;
+        }
+
+        DateTime now =
+            DateTime.UtcNow;
+
+        bool acceptedAny =
+            false;
+
+        foreach (
+            FamilyLibraryGameSnapshot game
+            in freeGames
+        ) {
+            if (
+                freeLicenseAttemptUtc.TryGetValue(
+                    game.AppId,
+                    out DateTime lastAttempt
+                ) &&
+                (
+                    (now - lastAttempt) <
+                    FreeLicenseRetryInterval
+                )
+            ) {
+                continue;
+            }
+
+            freeLicenseAttemptUtc[
+                game.AppId
+            ] = now;
+
+            (
+                EResult result,
+                IReadOnlyCollection<uint>?
+                    grantedApps,
+                IReadOnlyCollection<uint>?
+                    grantedPackages
+            ) =
+                await bot.Actions
+                    .AddFreeLicenseApp(
+                        game.AppId
+                    )
+                    .ConfigureAwait(false);
+
+            freeLicenseAttemptResult[
+                game.AppId
+            ] = result;
+
+            if (result == EResult.OK) {
+                acceptedAny = true;
+
+                bot.ArchiLogger
+                    .LogGenericInfo(
+                        "PlaytimeGoals: free license request accepted " +
+                        $"for AppID {game.AppId}; " +
+                        $"apps={grantedApps?.Count ?? 0}, " +
+                        $"packages={grantedPackages?.Count ?? 0}"
+                    );
+            } else {
+                bot.ArchiLogger
+                    .LogGenericWarning(
+                        "PlaytimeGoals: free license request failed " +
+                        $"for AppID {game.AppId}: {result}; " +
+                        "will retry later"
+                    );
+            }
+        }
+
+        if (!acceptedAny) {
+            return snapshot;
+        }
+
+        await Task
+            .Delay(
+                TimeSpan.FromSeconds(2)
+            )
+            .ConfigureAwait(false);
+
+        libraryCache.Invalidate();
+
+        return await libraryCache
+            .Get(
+                forceFull: true
+            )
+            .ConfigureAwait(false);
+    }
+
     public async Task<
         IReadOnlyList<ManagedGameSnapshot>?
     > FetchManagedLibrary() {
@@ -1520,6 +1698,13 @@ internal sealed class SteamActionsAdapter(
         HashSet<uint> managed =
             config.GameIds
                 .ToHashSet();
+
+        snapshot =
+            await AutoClaimSelectedFreeGames(
+                    snapshot,
+                    managed
+                )
+                .ConfigureAwait(false);
 
         FamilyLibraryGameSnapshot[] games =
             snapshot.Games
@@ -1587,6 +1772,23 @@ internal sealed class SteamActionsAdapter(
                          * on family-copy availability in our scheduler.
                          */
                         runnable = true;
+                    } else if (
+                        game.ExcludeReason ==
+                        (int)
+                        ESharedLibraryExcludeReason
+                            .k_ESharedLibrary_FreeGame
+                    ) {
+                        runnable = false;
+
+                        blockState =
+                            freeLicenseAttemptResult
+                                .TryGetValue(
+                                    game.AppId,
+                                    out EResult claimResult
+                                ) &&
+                            (claimResult != EResult.OK)
+                                ? "free-license-claim-failed"
+                                : "free-license-pending";
                     } else if (
                         !game.FamilyShared
                     ) {
