@@ -1614,6 +1614,24 @@ internal sealed class SteamActionsAdapter(
             FamilyLibraryGameSnapshot game
             in freeGames
         ) {
+            /*
+             * GetOwnedGames does not necessarily surface a newly
+             * activated free-to-play app until it has actually been
+             * played. Once Steam accepted RequestFreeLicense for this
+             * AppID, do not keep requesting the same free license every
+             * retry interval while waiting for that ownership view to
+             * catch up.
+             */
+            if (
+                freeLicenseAttemptResult.TryGetValue(
+                    game.AppId,
+                    out EResult previousResult
+                ) &&
+                (previousResult == EResult.OK)
+            ) {
+                continue;
+            }
+
             if (
                 freeLicenseAttemptUtc.TryGetValue(
                     game.AppId,
@@ -1778,17 +1796,33 @@ internal sealed class SteamActionsAdapter(
                         ESharedLibraryExcludeReason
                             .k_ESharedLibrary_FreeGame
                     ) {
-                        runnable = false;
-
-                        blockState =
+                        bool claimAccepted =
                             freeLicenseAttemptResult
                                 .TryGetValue(
                                     game.AppId,
                                     out EResult claimResult
                                 ) &&
-                            (claimResult != EResult.OK)
-                                ? "free-license-claim-failed"
-                                : "free-license-pending";
+                            (claimResult == EResult.OK);
+
+                        /*
+                         * RequestFreeLicense is the authoritative
+                         * activation result for an unowned F2P app.
+                         * GetOwnedGames only guarantees played free
+                         * games, so waiting for game.Owned here creates
+                         * a deadlock: the game cannot become "played"
+                         * because we refuse to start it.
+                         */
+                        runnable = claimAccepted;
+
+                        blockState = claimAccepted
+                            ? string.Empty
+                            : freeLicenseAttemptResult
+                                .TryGetValue(
+                                    game.AppId,
+                                    out claimResult
+                                )
+                            ? "free-license-claim-failed"
+                            : "free-license-pending";
                     } else if (
                         !game.FamilyShared
                     ) {
