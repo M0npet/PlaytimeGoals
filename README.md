@@ -14,7 +14,7 @@ goals with Steam Families and Steam Family View support.
 
 - Unified OWN + Steam Family library
 - Source labels: OWN, FAMILY and OWN+FAMILY
-- Finite per-game playtime goals
+- Finite per-game playtime goals with second-precision local deadlines
 - Unlimited managed idling with a `null` target
 - Up to 32 simultaneously managed AppIDs
 - Steam Family copy availability tracking
@@ -63,6 +63,8 @@ PlaytimeGoals adds custom bot configuration keys:
 `PlaytimeGoals` keys are the only managed AppIDs.
 
 - A numeric value is the target total playtime in hours.
+- Finite targets are converted to seconds and managed against a second-precision local deadline. Steam's reported historical playtime is minute-granularity, so the starting baseline can only be as precise as Steam reports it.
+- Existing v1 minute-credit ledgers are migrated automatically to the v2 second-credit format.
 - `null` means unlimited managed idling.
 
 When PlaytimeGoals is enabled, `GamesPlayedWhileIdle` must be empty and
