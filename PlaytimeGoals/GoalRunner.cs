@@ -398,7 +398,6 @@ internal sealed class GoalRunner : IDisposable {
                     $"{string.Join(',', currentBatch)} ({reason})"
                 );
 
-                ScheduleCompletionTimer(now);
             } else if (reassertDue) {
                 await steam
                     .AssertGames(
@@ -415,7 +414,7 @@ internal sealed class GoalRunner : IDisposable {
             }
 
             if (asserted) {
-                ScheduleCompletionTimer(now);
+                ScheduleCompletionTimer();
             }
 
             Persist(false);
@@ -1033,9 +1032,7 @@ internal sealed class GoalRunner : IDisposable {
             reconciled;
     }
 
-    private void ScheduleCompletionTimer(
-        DateTime now
-    ) {
+    private void ScheduleCompletionTimer() {
         completionTimer?.Dispose();
         completionTimer = null;
 
