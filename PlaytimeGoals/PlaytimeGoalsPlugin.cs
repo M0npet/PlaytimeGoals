@@ -989,9 +989,21 @@ internal sealed class PlaytimeGoalsPlugin :
                         appId,
                         string.Empty,
                         targetHours,
+                        targetHours.HasValue
+                            ? GoalConfig.TargetSeconds(
+                                targetHours.Value
+                            )
+                            : null,
+                        0,
+                        0,
                         0,
                         0,
                         targetHours,
+                        targetHours.HasValue
+                            ? GoalConfig.TargetSeconds(
+                                targetHours.Value
+                            )
+                            : null,
                         targetHours.HasValue
                             ? "unknown"
                             : "unset"
@@ -1066,9 +1078,13 @@ internal sealed class PlaytimeGoalsPlugin :
 
                                     game.Name,
                                     game.TargetHours,
+                                    game.TargetSeconds,
                                     game.CurrentHours,
+                                    game.CurrentSeconds,
                                     game.EffectiveHours,
+                                    game.EffectiveSeconds,
                                     game.RemainingHours,
+                                    game.RemainingSeconds,
                                     game.State,
                                     game.QueuePosition
                                 }
