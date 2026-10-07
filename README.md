@@ -5,7 +5,7 @@
 PlaytimeGoals is a custom ArchiSteamFarm plugin for per-game playtime
 goals with Steam Families and Steam Family View support.
 
-> **Status:** v0.5.0 source preview. Core backend, Steam Family
+> **Status:** v0.5.2 source preview. Core backend, Steam Family
 > integration, Family View round-trip recovery, migration, IPC/TLS and
 > the web UI have been tested. Additional real-world runtime smoke tests
 > are still in progress.
@@ -33,7 +33,7 @@ goals with Steam Families and Steam Family View support.
 
 ## Tested environment
 
-PlaytimeGoals v0.5.0 was developed and tested with:
+PlaytimeGoals v0.5.2 targets:
 
 - ArchiSteamFarm 6.3.9.6
 - SteamKit2 3.4.0
