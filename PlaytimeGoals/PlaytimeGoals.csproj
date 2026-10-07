@@ -3,7 +3,7 @@
     <OutputType>Library</OutputType>
     <AssemblyName>PlaytimeGoals</AssemblyName>
     <RootNamespace>PlaytimeGoals</RootNamespace>
-    <Version>0.5.1.0</Version>
+    <Version>0.5.2.0</Version>
     <Description>Per-game playtime targets for ArchiSteamFarm.</Description>
   </PropertyGroup>
 

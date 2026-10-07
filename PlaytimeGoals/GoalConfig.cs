@@ -45,15 +45,15 @@ internal sealed class GoalConfig {
             ? value
             : null;
 
-    internal static uint TargetMinutes(
+    internal static ulong TargetSeconds(
         double hours
     ) {
-        double minutes =
-            Math.Ceiling(hours * 60d);
+        double seconds =
+            Math.Ceiling(hours * 3600d);
 
-        return minutes >= uint.MaxValue
-            ? uint.MaxValue
-            : (uint) minutes;
+        return seconds >= ulong.MaxValue
+            ? ulong.MaxValue
+            : (ulong) seconds;
     }
 }
 
