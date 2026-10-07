@@ -635,8 +635,13 @@ internal sealed class GoalRunner : IDisposable {
         currentBatch =
             Array.Empty<uint>();
 
-        completionTimer?.Dispose();
-        completionTimer = null;
+        if (completionTimer != null) {
+            await completionTimer
+                .DisposeAsync()
+                .ConfigureAwait(false);
+
+            completionTimer = null;
+        }
 
         creditStartUtc =
             DateTime.MinValue;
