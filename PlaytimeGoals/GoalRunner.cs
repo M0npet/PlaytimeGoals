@@ -40,9 +40,13 @@ internal sealed record GoalGameStatus(
     uint AppId,
     string Name,
     double? TargetHours,
+    ulong? TargetSeconds,
     double CurrentHours,
+    ulong CurrentSeconds,
     double EffectiveHours,
+    ulong EffectiveSeconds,
     double? RemainingHours,
+    ulong? RemainingSeconds,
     string State,
     int? QueuePosition = null
 );
@@ -81,6 +85,7 @@ internal sealed class GoalRunner : IDisposable {
     private readonly Action<string> warn;
     private readonly SemaphoreSlim sync = new(1, 1);
     private readonly Timer? heartbeat;
+    private Timer? completionTimer;
 
     private readonly Dictionary<
         uint,
@@ -193,6 +198,8 @@ internal sealed class GoalRunner : IDisposable {
 
         disposed = true;
         heartbeat?.Dispose();
+        completionTimer?.Dispose();
+        completionTimer = null;
         sync.Dispose();
     }
 
@@ -390,6 +397,8 @@ internal sealed class GoalRunner : IDisposable {
                     $"idling {currentBatch.Length} managed game(s): " +
                     $"{string.Join(',', currentBatch)} ({reason})"
                 );
+
+                ScheduleCompletionTimer(now);
             } else if (reassertDue) {
                 await steam
                     .AssertGames(
@@ -403,6 +412,10 @@ internal sealed class GoalRunner : IDisposable {
                     $"reasserted {currentBatch.Length} managed game(s) " +
                     $"({reason})"
                 );
+            }
+
+            if (asserted) {
+                ScheduleCompletionTimer(now);
             }
 
             Persist(false);
@@ -481,22 +494,35 @@ internal sealed class GoalRunner : IDisposable {
                     game?.PlaytimeForeverMinutes ??
                     0;
 
-                uint effectiveMinutes =
-                    EffectiveMinutes(
+                ulong currentSeconds =
+                    (ulong) serverMinutes * 60UL;
+
+                ulong effectiveSeconds =
+                    EffectiveSeconds(
                         appId,
                         serverMinutes
                     );
 
-                double? remaining =
+                ulong? targetSeconds =
                     targetHours is > 0
-                        ? Math.Max(
-                            0d,
-                            targetHours.Value -
-                            (
-                                effectiveMinutes /
-                                60d
-                            )
+                        ? GoalConfig.TargetSeconds(
+                            targetHours.Value
                         )
+                        : null;
+
+                ulong? remainingSeconds =
+                    targetSeconds.HasValue
+                        ? targetSeconds.Value >
+                            effectiveSeconds
+                            ? targetSeconds.Value -
+                                effectiveSeconds
+                            : 0UL
+                        : null;
+
+                double? remaining =
+                    remainingSeconds.HasValue
+                        ? remainingSeconds.Value /
+                            3600d
                         : null;
 
                 string state =
@@ -504,7 +530,7 @@ internal sealed class GoalRunner : IDisposable {
                         appId,
                         game,
                         targetHours,
-                        effectiveMinutes
+                        effectiveSeconds
                     );
 
                 int? queuePosition =
@@ -537,22 +563,26 @@ internal sealed class GoalRunner : IDisposable {
                         game?.Name ??
                             string.Empty,
                         targetHours,
+                        targetSeconds,
                         Math.Round(
                             serverMinutes /
                             60d,
                             2
                         ),
+                        currentSeconds,
                         Math.Round(
-                            effectiveMinutes /
-                            60d,
-                            2
+                            effectiveSeconds /
+                            3600d,
+                            4
                         ),
+                        effectiveSeconds,
                         remaining.HasValue
                             ? Math.Round(
                                 remaining.Value,
-                                2
+                                4
                             )
                             : null,
+                        remainingSeconds,
                         state,
                         queuePosition
                     )
@@ -605,6 +635,9 @@ internal sealed class GoalRunner : IDisposable {
         asserted = false;
         currentBatch =
             Array.Empty<uint>();
+
+        completionTimer?.Dispose();
+        completionTimer = null;
 
         creditStartUtc =
             DateTime.MinValue;
@@ -710,7 +743,7 @@ internal sealed class GoalRunner : IDisposable {
             (
                 uint AppId,
                 bool Unlimited,
-                uint Remaining
+                ulong Remaining
             )
         > candidates =
             new();
@@ -735,13 +768,13 @@ internal sealed class GoalRunner : IDisposable {
                 );
 
             if (targetHours is > 0) {
-                uint target =
-                    GoalConfig.TargetMinutes(
+                ulong target =
+                    GoalConfig.TargetSeconds(
                         targetHours.Value
                     );
 
-                uint effective =
-                    EffectiveMinutes(
+                ulong effective =
+                    EffectiveSeconds(
                         appId,
                         game.PlaytimeForeverMinutes
                     );
@@ -792,12 +825,12 @@ internal sealed class GoalRunner : IDisposable {
         uint appId,
         ManagedGameSnapshot? game,
         double? targetHours,
-        uint effectiveMinutes
+        ulong effectiveSeconds
     ) {
         if (
             targetHours is > 0 &&
-            effectiveMinutes >=
-                GoalConfig.TargetMinutes(
+            effectiveSeconds >=
+                GoalConfig.TargetSeconds(
                     targetHours.Value
                 )
         ) {
@@ -856,15 +889,15 @@ internal sealed class GoalRunner : IDisposable {
             return;
         }
 
-        uint minutes =
-            (uint) Math.Floor(
+        ulong seconds =
+            (ulong) Math.Floor(
                 (
                     now -
                     creditStartUtc
-                ).TotalMinutes
+                ).TotalSeconds
             );
 
-        if (minutes == 0) {
+        if (seconds == 0) {
             return;
         }
 
@@ -886,47 +919,50 @@ internal sealed class GoalRunner : IDisposable {
                     out CreditEntry? entry
                 )
                     ? entry with {
-                        CreditedMinutes =
-                            entry.CreditedMinutes +
-                            minutes
+                        CreditedSeconds =
+                            entry.CreditedSeconds +
+                            seconds
                     }
                     : new CreditEntry(
                         server,
-                        minutes
+                        seconds
                     );
         }
 
         creditStartUtc =
             creditStartUtc
-                .AddMinutes(
-                    minutes
+                .AddSeconds(
+                    seconds
                 );
     }
 
-    private uint EffectiveMinutes(
+    private ulong EffectiveSeconds(
         uint appId,
         uint serverMinutes
     ) {
+        ulong serverSeconds =
+            (ulong) serverMinutes * 60UL;
+
         if (
             !ledger.TryGetValue(
                 appId,
                 out CreditEntry? entry
             )
         ) {
-            return serverMinutes;
+            return serverSeconds;
         }
 
         ulong believed =
-            (ulong)
-            entry.ServerBaselineMinutes +
-            entry.CreditedMinutes;
+            (
+                (ulong)
+                entry.ServerBaselineMinutes *
+                60UL
+            ) +
+            entry.CreditedSeconds;
 
-        return (uint) Math.Min(
-            uint.MaxValue,
-            Math.Max(
-                (ulong) serverMinutes,
-                believed
-            )
+        return Math.Max(
+            serverSeconds,
+            believed
         );
     }
 
@@ -959,12 +995,21 @@ internal sealed class GoalRunner : IDisposable {
             uint reported =
                 game.PlaytimeForeverMinutes;
 
-            ulong believed =
-                (ulong)
-                entry.ServerBaselineMinutes +
-                entry.CreditedMinutes;
+            ulong reportedSeconds =
+                (ulong) reported * 60UL;
 
-            if (reported >= believed) {
+            ulong believedSeconds =
+                (
+                    (ulong)
+                    entry.ServerBaselineMinutes *
+                    60UL
+                ) +
+                entry.CreditedSeconds;
+
+            if (
+                reportedSeconds >=
+                believedSeconds
+            ) {
                 continue;
             }
 
@@ -975,11 +1020,8 @@ internal sealed class GoalRunner : IDisposable {
                 reconciled[appId] =
                     new CreditEntry(
                         reported,
-                        (uint)
-                        (
-                            believed -
-                            reported
-                        )
+                        believedSeconds -
+                        reportedSeconds
                     );
             } else {
                 reconciled[appId] =
@@ -989,6 +1031,103 @@ internal sealed class GoalRunner : IDisposable {
 
         ledger =
             reconciled;
+    }
+
+    private void ScheduleCompletionTimer(
+        DateTime now
+    ) {
+        completionTimer?.Dispose();
+        completionTimer = null;
+
+        if (
+            !asserted ||
+            currentBatch.Length == 0
+        ) {
+            return;
+        }
+
+        ulong? earliestRemainingSeconds =
+            null;
+
+        foreach (uint appId in currentBatch) {
+            double? targetHours =
+                config.GetTargetHours(appId);
+
+            if (
+                targetHours is not > 0 ||
+                !library.TryGetValue(
+                    appId,
+                    out ManagedGameSnapshot? game
+                )
+            ) {
+                continue;
+            }
+
+            ulong targetSeconds =
+                GoalConfig.TargetSeconds(
+                    targetHours.Value
+                );
+
+            ulong effectiveSeconds =
+                EffectiveSeconds(
+                    appId,
+                    game.PlaytimeForeverMinutes
+                );
+
+            if (
+                effectiveSeconds >=
+                targetSeconds
+            ) {
+                earliestRemainingSeconds =
+                    0;
+                break;
+            }
+
+            ulong remainingSeconds =
+                targetSeconds -
+                effectiveSeconds;
+
+            if (
+                !earliestRemainingSeconds.HasValue ||
+                remainingSeconds <
+                    earliestRemainingSeconds.Value
+            ) {
+                earliestRemainingSeconds =
+                    remainingSeconds;
+            }
+        }
+
+        if (!earliestRemainingSeconds.HasValue) {
+            return;
+        }
+
+        TimeSpan due =
+            earliestRemainingSeconds.Value == 0
+                ? TimeSpan.Zero
+                : TimeSpan.FromSeconds(
+                    Math.Min(
+                        earliestRemainingSeconds.Value,
+                        (ulong) int.MaxValue
+                    )
+                );
+
+        completionTimer =
+            new Timer(
+                _ => {
+                    try {
+                        _ = Pump(
+                            "target deadline",
+                            forceReassert: false,
+                            refreshLibrary: false
+                        );
+                    } catch (ObjectDisposedException) {
+                        // Bot/config teardown won the race.
+                    }
+                },
+                null,
+                due,
+                Timeout.InfiniteTimeSpan
+            );
     }
 
     private void Persist(
