@@ -1104,14 +1104,9 @@ internal sealed class GoalRunner : IDisposable {
         }
 
         TimeSpan due =
-            earliestRemainingSeconds.Value == 0
-                ? TimeSpan.Zero
-                : TimeSpan.FromSeconds(
-                    Math.Min(
-                        earliestRemainingSeconds.Value,
-                        (ulong) int.MaxValue
-                    )
-                );
+            CompletionTimerDelay.FromRemainingSeconds(
+                earliestRemainingSeconds.Value
+            );
 
         completionTimer =
             new Timer(
