@@ -5,7 +5,7 @@
 PlaytimeGoals is a custom ArchiSteamFarm plugin for per-game playtime
 goals with Steam Families and Steam Family View support.
 
-> **Status:** v0.5.2 source preview. Core backend, Steam Family
+> **Status:** v0.5.3 source preview. Core backend, Steam Family
 > integration, Family View round-trip recovery, migration, IPC/TLS and
 > the web UI have been tested. Additional real-world runtime smoke tests
 > are still in progress.
@@ -15,6 +15,7 @@ goals with Steam Families and Steam Family View support.
 - Unified OWN + Steam Family library
 - Source labels: OWN, FAMILY and OWN+FAMILY
 - Finite per-game playtime goals with second-precision local deadlines
+- Long finite goals safely bridge the runtime timer limit without heartbeat failures
 - Unlimited managed idling with a `null` target
 - Up to 32 simultaneously managed AppIDs
 - Steam Family copy availability tracking
@@ -33,7 +34,7 @@ goals with Steam Families and Steam Family View support.
 
 ## Tested environment
 
-PlaytimeGoals v0.5.2 targets:
+PlaytimeGoals v0.5.3 targets:
 
 - ArchiSteamFarm 6.3.9.6
 - SteamKit2 3.4.0
